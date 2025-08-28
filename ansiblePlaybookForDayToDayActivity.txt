@@ -1,0 +1,83 @@
+---
+- name: Daily Operations Playbook
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars:
+    users_to_manage:
+      - { name: "devops", state: "present", groups: "wheel" }
+      - { name: "tempuser", state: "absent" }
+    services_to_check:
+      - docker
+      - sshd
+      - crond
+
+  tasks:
+
+    - name: Check disk usage
+      shell: df -h /
+      register: disk_usage
+
+    - debug:
+        msg: "Disk usage is: {{ disk_usage.stdout }}"
+
+    - name: Ensure required users exist or are removed
+      user:
+        name: "{{ item.name }}"
+        state: "{{ item.state }}"
+        groups: "{{ item.groups | default(omit) }}"
+      loop: "{{ users_to_manage }}"
+
+    - name: Check if critical services are running
+      service:
+        name: "{{ item }}"
+        state: started
+      loop: "{{ services_to_check }}"
+
+    - name: Cleanup old logs (older than 7 days)
+      find:
+        paths: /var/log
+        age: 7d
+        recurse: yes
+      register: logs_to_remove
+
+    - name: Remove old logs
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ logs_to_remove.files }}"
+
+    - name: Update all packages (RHEL)
+      yum:
+        name: "*"
+        state: latest
+      when: ansible_os_family == "RedHat"
+
+    - name: Update all packages (Debian)
+      apt:
+        upgrade: dist
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Verify SSH connectivity (to avoid lockouts)
+      ping:
+
+
+
+
+
+
+
+
+
+
+
+What this covers (daily ops style):
+
+ Checks disk space
+ Manages users (add/remove)
+ Ensures critical services are running
+ Cleans up old logs
+ Performs system updates
+ Runs a quick SSH connectivity check
